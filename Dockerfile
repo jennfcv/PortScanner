@@ -1,11 +1,16 @@
 FROM python:3.8-slim
 
-# Instalar nmap con capacidades necesarias
+# 1. Instalar nmap y dependencias esenciales
 RUN apt-get update && apt-get install -y \
     nmap \
-    libcap2-bin \
-    && setcap cap_net_raw,cap_net_admin,cap_net_bind_service+eip /usr/bin/nmap \
+    && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
+
+# 2. Verificar la instalación de nmap
+RUN which nmap && nmap --version
+
+# 3. Configurar el PATH explícitamente
+ENV PATH="/usr/bin/nmap:${PATH}"
 
 # Configurar entorno
 ENV PYTHONUNBUFFERED=1 \
