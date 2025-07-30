@@ -1,8 +1,10 @@
 FROM python:3.8-slim
 
-# Instalar nmap y dependencias
+# Instalar nmap con capacidades necesarias
 RUN apt-get update && apt-get install -y \
     nmap \
+    libcap2-bin \
+    && setcap cap_net_raw,cap_net_admin,cap_net_bind_service+eip /usr/bin/nmap \
     && rm -rf /var/lib/apt/lists/*
 
 # Configurar entorno
