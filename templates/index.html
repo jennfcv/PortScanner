@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Scanner</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAl8DaopxOLYwyY0gJV2fUky4_X99ZFwJY&callback=initMap"
+    async defer></script>
+</head>
+
+<body class="bg-gray-100 text-gray-800">
+
+  <!-- Sidebar -->
+  <div class="flex min-h-screen">
+    <aside class="w-64 bg-blue-900 text-white p-4 space-y-6 hidden sm:block">
+      <div>
+        <h1 class="text-xl font-bold">Admin Panel</h1>
+        <p class="text-sm">Cybersecurity Tools</p>
+        <!-- <p class="text-sm">By: Luishiño</p> -->
+      </div>
+      <nav>
+        <a href="/" class="block px-4 py-2 text-white bg-blue-800 rounded-md mb-2">Scanner</a>
+      </nav>
+    </aside>
+    <div class="flex-1 flex flex-col w-full">
+      <header class="bg-white shadow-md p-4 flex items-center justify-between">
+        <div class="flex items-center">
+          <button id="sidebar-toggle" class="sm:hidden p-2 bg-blue-600 text-white rounded-md">
+            <i class="fas fa-bars"></i>
+          </button>
+          <h2 class="text-2xl font-semibold ml-4">Scanner</h2>
+        </div>
+      </header>
+
+      <!-- Form Section -->
+      <main class="flex-1 p-6 bg-gray-100">
+        <div class="max-w-xl mx-auto bg-white p-6 rounded-md shadow-md">
+          <div class="text-center">
+            <h3 class="text-2xl font-bold text-gray-800 mb-2">Iniciar Escaneo</h3>
+            <p class="text-gray-500 text-sm">Ingresa la IP o el nombre de host que deseas escanear</p>
+          </div>
+          <form action="/scan" method="post" class="space-y-4">
+            <div>
+              <label for="target" class="block text-sm font-medium text-gray-700">IP de destino o nombre de host</label>
+        <input type="text" name="target" id="target"
+          class="w-full border border-gray-300 rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-700"
+          placeholder="Ej: 192.168.1.1" required />
+            </div>
+<div class="mb-6">
+  <label for="scan_type" class="block text-sm font-medium text-gray-700 mb-2">Tipo de escaneo</label>
+  <select name="scan_type" id="scan_type"
+    class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-gray-900 bg-white transition duration-200 ease-in-out hover:bg-blue-50 focus:outline-none">
+    <option value="default">Análisis Exhaustivo (-sS -sV -O -A)</option>
+    <option value="fast">Escaneo Rápido (-F)</option>
+    <option value="tcp_syn">TCP SYN Stealth (-sS)</option>
+    <option value="service_detection">Detección de Servicios (-sV)</option>
+    <option value="ssl">Análisis SSL/TLS</option>
+    <option value="headers">Análisis de Cabeceras HTTP</option>
+    <option value="subdomains">Detección de Subdominios</option>
+    <option value="technologies">Detección de Tecnologías</option>
+  </select>
+</div>
+
+            <div>
+              <button type="submit" id="scanButton"
+                class="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                Escanear
+              </button>
+            </div>
+            <div id="result" class="bg-white rounded-lg shadow-lg p-6"></div>
+          </form>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <script>
+    function initMap(lat, lon) {
+      const location = { lat: parseFloat(lat), lng: parseFloat(lon) };
+      const map = new google.maps.Map(document.getElementById("map"), {
+        zoom: 12,
+        center: location,
+      });
+      new google.maps.Marker({
+        position: location,
+        map: map,
+      });
+    }
+
+    document.getElementById('scanButton').addEventListener('click', async function () {
+  const target = document.getElementById('target').value.trim();
+  if (!target) {
+    alert('Por favor ingresa una IP o un dominio.');
+    return;
+  }
+
+  let ip = target;
+
+  // Si no es una IP (es un dominio), resolverlo
+  if (!/^\d{1,3}(\.\d{1,3}){3}$/.test(target)) {
+    try {
+      const dnsResponse = await fetch(`https://dns.google/resolve?name=${target}&type=A`);
+      const dnsData = await dnsResponse.json();
+      if (dnsData.Answer && dnsData.Answer.length > 0) {
+        ip = dnsData.Answer[0].data; // Tomamos la primera IP que devuelve
+      } else {
+        alert('No se pudo resolver el dominio a una IP.');
+        return;
+      }
+    } catch (error) {
+      console.error('Error al resolver el dominio:', error);
+      alert('Hubo un problema al resolver el dominio.');
+      return;
+    }
+  }
+
+  // Ahora ya tenemos una IP segura en "ip"
+  try {
+    const response = await fetch(`https://ipinfo.io/${ip}/json`);
+    const data = await response.json();
+
+    const ipDetails = `
+      <h3 class="text-lg font-semibold mb-4">Información de IP</h3>
+      <ul>
+        <li><strong>IP:</strong> ${data.ip}</li>
+        <li><strong>Ciudad:</strong> ${data.city}</li>
+        <li><strong>Región:</strong> ${data.region}</li>
+        <li><strong>País:</strong> ${data.country}</li>
+        <li><strong>Ubicación:</strong> ${data.loc}</li>
+        <li><strong>Organización:</strong> ${data.org}</li>
+      </ul>
+      <div id="map" class="w-full h-96 mt-6"></div>
+    `;
+    document.getElementById('result').innerHTML = ipDetails;
+
+    const [lat, lon] = data.loc.split(',');
+    initMap(lat, lon);
+
+  } catch (error) {
+    console.error('Error al obtener los datos de la IP:', error);
+    alert('Hubo un problema al obtener los datos de la IP.');
+  }
+});
+
+  </script>
+  <div id="mobile-sidebar" class="fixed inset-0 bg-blue-900 text-white w-64 p-4 space-y-6 hidden sm:hidden">
+    <div>
+      <h1 class="text-xl font-bold">Admin Panel</h1>
+      <p class="text-sm">Cybersecurity Tools</p>
+    </div>
+    <nav>
+      <a href="/" class="block px-4 py-2 text-white bg-blue-800 rounded-md mb-2">Scanner</a>
+    </nav>
+  </div>
+
+  <script>
+    const sidebarToggle = document.getElementById('sidebar-toggle');
+    const mobileSidebar = document.getElementById('mobile-sidebar');
+    sidebarToggle.addEventListener('click', () => {
+      mobileSidebar.classList.toggle('hidden');
+    });
+  </script>
+
+</body>
+
+</html>

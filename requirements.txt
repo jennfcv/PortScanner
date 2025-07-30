@@ -1,0 +1,6 @@
+flask
+python-nmap
+openai==0.28
+pyyaml
+requests
+dnspython

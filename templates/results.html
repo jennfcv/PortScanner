@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Resultados del Escaneo</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <link href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css" rel="stylesheet">
+</head>
+
+<body class="bg-gray-100 text-gray-800">
+
+<div class="flex min-h-screen">
+  <aside class="w-64 bg-blue-900 text-white p-4 space-y-6 hidden md:block">
+    <div>
+      <h1 class="text-xl font-bold">Admin Panel</h1>
+      <p class="text-sm">Cybersecurity Tools</p>
+    </div>
+    <nav>
+      <a href="/" class="block px-4 py-2 text-white bg-blue-800 rounded-md mb-2">Scanner</a>
+    </nav>
+  </aside>
+
+  <div class="flex-1 flex flex-col">
+    <header class="bg-white shadow-md p-4 flex items-center justify-between">
+      <h2 class="text-2xl font-semibold">Resultados del Escaneo</h2>
+    </header>
+
+    <main class="p-6">
+      <div class="bg-white rounded-lg shadow-lg p-6 mb-6">
+        <h1 class="text-2xl font-bold mb-5">Objetivo: {{ target }}</h1>
+
+        <!-- Resultados de Puertos Abiertos -->
+        {% if open_ports %}
+        <div class="overflow-x-auto">
+          <table class="table-auto w-full border-collapse border border-gray-200 rounded-md">
+            <thead>
+              <tr class="bg-blue-600 text-white">
+                <th class="px-4 py-2 text-left">Puerto</th>
+                <th class="px-4 py-2 text-left">Servicio</th>
+                <th class="px-4 py-2 text-left">Producto</th>
+                <th class="px-4 py-2 text-left">Versión</th>
+                <th class="px-4 py-2 text-left">Información Extra</th>
+                <th class="px-4 py-2 text-left">Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for port in open_ports %}
+              <tr class="border-b hover:bg-gray-50">
+                <td class="px-4 py-2">{{ port['port'] }}</td>
+                <td class="px-4 py-2">{{ port['name'] }}</td>
+                <td class="px-4 py-2">{{ port['product'] }}</td>
+                <td class="px-4 py-2">{{ port['version'] }}</td>
+                <td class="px-4 py-2">{{ port['extrainfo'] }}</td>
+                <td class="px-4 py-2">
+                  <form action="/action" method="POST" class="flex items-center">
+                    <input type="hidden" name="port" value="{{ port['port'] }}">
+                    <input type="hidden" name="product" value="{{ port['product'] }}">
+                    <input type="hidden" name="version" value="{{ port['version'] }}">
+                    <input type="hidden" name="extrainfo" value="{{ port['extrainfo'] }}">
+                    <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-md ml-3">
+                      <i class="ti ti-arrow-right-circle mr-2"></i>Ver Recomendación
+                    </button>
+                  </form>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Gráficos de Puertos -->
+        <div class="bg-white rounded-lg shadow-lg p-6 mt-6">
+          <h2 class="text-2xl font-semibold mb-6 text-center">Port Usage Report</h2>
+          <div class="flex flex-col lg:flex-row gap-8">
+            <div class="flex-1 flex justify-center">
+              <div class="w-72 h-72">
+                <canvas id="pieChart" class="w-full h-full"></canvas>
+              </div>
+            </div>
+            <div class="flex-1 flex justify-center">
+              <div class="w-72 h-72">
+                <canvas id="barChart" class="w-full h-full"></canvas>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {% elif result %}
+        <!-- Resultados de SSL, Headers, Tecnologías -->
+        {% if scan_type == 'ssl' or scan_type == 'headers' or scan_type == 'technologies' %}
+        <div class="overflow-x-auto">
+          <table class="table-auto w-full border-collapse border border-gray-200 rounded-md">
+            <thead>
+              <tr class="bg-blue-600 text-white">
+                <th class="px-4 py-2">Parámetro</th>
+                <th class="px-4 py-2">Valor</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for key, value in result.items() %}
+              <tr class="border-b hover:bg-gray-50">
+                <td class="px-4 py-2">{{ key }}</td>
+                <td class="px-4 py-2">{{ value }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Botón para pedir recomendación -->
+        <form action="/recomendacion" method="POST" class="mt-8">
+          <input type="hidden" name="tipo_analisis" value="{{ scan_type }}">
+          <input type="hidden" name="resultados" value="{{ result }}">
+          <button type="submit" class="bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-2 px-4 rounded">
+            <i class="ti ti-brain mr-2"></i>Ver Recomendación de Seguridad (IA)
+          </button>
+        </form>
+
+        {% elif scan_type == 'subdomains' %}
+        <!-- Resultados de Subdominios -->
+        <ul class="list-disc list-inside text-lg mt-6">
+          {% for domain in result %}
+          <li>{{ domain }}</li>
+          {% endfor %}
+        </ul>
+
+        <!-- Botón para pedir recomendación -->
+        <form action="/recomendacion" method="POST" class="mt-8">
+          <input type="hidden" name="tipo_analisis" value="{{ scan_type }}">
+          <input type="hidden" name="resultados" value="{{ result }}">
+          <button type="submit" class="bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-2 px-4 rounded">
+            <i class="ti ti-brain mr-2"></i>Ver Recomendación de Seguridad (IA)
+          </button>
+        </form>
+
+        {% endif %}
+        {% else %}
+        <p class="text-center text-gray-600">No se encontraron resultados.</p>
+        {% endif %}
+      </div>
+    </main>
+  </div>
+</div>
+
+<!-- Scripts de Gráficos (solo si hay puertos abiertos) -->
+{% if open_ports %}
+<script>
+const openPorts = {{ open_ports|tojson }};
+const portServiceMap = {
+  20: 'FTP', 21: 'FTP', 22: 'SSH', 23: 'TELNET', 25: 'SMTP', 53: 'DNS',
+  80: 'HTTP', 110: 'POP3', 143: 'IMAP', 443: 'HTTPS', 3306: 'MySQL',
+  5432: 'PostgreSQL', 135: 'Windows Services', 139: 'Windows Services',
+  445: 'Windows Services', 5200: 'HTTP', 5900: 'VNC', 3389: 'RDP', 8080: 'HTTP'
+};
+
+const serviceCounts = {};
+const servicePorts = {};
+
+openPorts.forEach(port => {
+  const portNum = port.port;
+  const service = portServiceMap[portNum] || 'Otros';
+  if (serviceCounts[service]) {
+    serviceCounts[service] += 1;
+    servicePorts[service].push(portNum);
+  } else {
+    serviceCounts[service] = 1;
+    servicePorts[service] = [portNum];
+  }
+});
+
+const pieLabels = Object.keys(serviceCounts).map(service => {
+  const ports = servicePorts[service].join(', ');
+  return `${service} (${ports})`;
+});
+const pieData = Object.values(serviceCounts);
+
+const pieCtx = document.getElementById('pieChart').getContext('2d');
+new Chart(pieCtx, {
+  type: 'pie',
+  data: {
+    labels: pieLabels,
+    datasets: [{
+      data: pieData,
+      backgroundColor: ['#1d4ed8', '#22c55e', '#f59e0b', '#ef4444', '#6b7280', '#8b5cf6', '#10b981', '#f97316', '#e11d48']
+    }]
+  }
+});
+
+const barCtx = document.getElementById('barChart').getContext('2d');
+new Chart(barCtx, {
+  type: 'bar',
+  data: {
+    labels: pieLabels,
+    datasets: [{
+      label: 'Cantidad de Puertos Abiertos por Servicio',
+      data: pieData,
+      backgroundColor: '#4f46e5'
+    }]
+  },
+  options: {
+    responsive: true,
+    scales: {
+      y: { beginAtZero: true },
+      x: { ticks: { maxRotation: 45, minRotation: 45 } }
+    }
+  }
+});
+</script>
+{% endif %}
+
+</body>
+</html>
