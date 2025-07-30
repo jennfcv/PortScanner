@@ -1,25 +1,31 @@
-# Usa una imagen base de Python 3.8
+# Usa una imagen base más ligera con Python 3.8
 FROM python:3.8-slim
 
-# Establecer el directorio de trabajo en el contenedor
-WORKDIR /app
-
-# Instalar nmap (binario) y otras herramientas necesarias
+# Instala nmap y dependencias necesarias primero (para mejor caching)
 RUN apt-get update && apt-get install -y \
     nmap \
     && rm -rf /var/lib/apt/lists/*
 
-# Copia los archivos del proyecto al contenedor
-COPY . /app
+# Establece variables de entorno para Python
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1
 
-# Instalar las dependencias del archivo requirements.txt
-RUN pip install --no-cache-dir -r requirements.txt
+# Crea y configura el directorio de trabajo
+WORKDIR /app
 
-# Instalar el paquete Python nmap explícitamente
-RUN pip install python-nmap
+# Copia solo los archivos necesarios primero (para mejor caching)
+COPY requirements.txt .
 
-# Exponer el puerto en el que se ejecutará la aplicación Flask
+# Instala dependencias de Python
+RUN pip install --no-cache-dir -r requirements.txt && \
+    pip install python-nmap
+
+# Copia el resto de los archivos
+COPY . .
+
+# Puerto expuesto (coherente con tu app.py)
 EXPOSE 5200
 
-# Comando para ejecutar la aplicación
-CMD ["python", "app.py"]
+# Usa gunicorn para producción en lugar del servidor de desarrollo de Flask
+CMD ["gunicorn", "--bind", "0.0.0.0:5200", "--workers", "4", "app:app"]
