@@ -52,8 +52,9 @@ def load_config():
     return {}
 
 # Cargar la configuración
-config = load_config()
-
+config = {
+    'OPENAI_API_KEY': os.getenv('OPENAI_API_KEY')
+}
 # Configurar la clave de la API de OpenAI
 if 'OPENAI_API_KEY' in config:
     openai.api_key = config['OPENAI_API_KEY']
