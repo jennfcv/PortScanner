@@ -4,6 +4,7 @@ import openai
 import requests
 import ssl
 import socket
+import os
 import dns.resolver
 import concurrent.futures
 from datetime import datetime
