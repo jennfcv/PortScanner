@@ -1,15 +1,42 @@
 from flask import Flask, render_template, request, jsonify
-import nmap
 import yaml
 import openai
-from datetime import datetime
 import requests
 import ssl
 import socket
 import dns.resolver
+import concurrent.futures
+from datetime import datetime
 
 # Crear la aplicación Flask
 app = Flask(__name__)
+
+# Diccionario de servicios comunes
+PORT_SERVICES = {
+    20: 'FTP Data', 21: 'FTP Control', 22: 'SSH', 23: 'Telnet', 
+    25: 'SMTP', 53: 'DNS', 67: 'DHCP Server', 68: 'DHCP Client',
+    69: 'TFTP', 80: 'HTTP', 110: 'POP3', 111: 'RPCbind', 
+    123: 'NTP', 135: 'MS RPC', 137: 'NetBIOS', 138: 'NetBIOS',
+    139: 'NetBIOS', 143: 'IMAP', 161: 'SNMP', 162: 'SNMP Trap',
+    389: 'LDAP', 443: 'HTTPS', 445: 'SMB', 465: 'SMTPS',
+    514: 'Syslog', 587: 'SMTP Submission', 631: 'IPP', 636: 'LDAPS',
+    993: 'IMAPS', 995: 'POP3S', 1080: 'SOCKS', 1194: 'OpenVPN',
+    1433: 'MS SQL', 1521: 'Oracle DB', 1723: 'PPTP', 1883: 'MQTT',
+    1900: 'UPnP', 2049: 'NFS', 2082: 'cPanel', 2083: 'cPanel SSL',
+    2086: 'WHM', 2087: 'WHM SSL', 2095: 'Webmail', 2096: 'Webmail SSL',
+    2181: 'ZooKeeper', 2375: 'Docker', 2376: 'Docker SSL',
+    3000: 'Node.js', 3306: 'MySQL', 3389: 'RDP', 4333: 'mSQL',
+    4444: 'Metasploit', 4567: 'Sinatra', 4711: 'FileZilla Admin',
+    4712: 'FileZilla Admin', 4848: 'GlassFish', 5000: 'UPnP',
+    5432: 'PostgreSQL', 5601: 'Kibana', 5672: 'AMQP', 5900: 'VNC',
+    5938: 'TeamViewer', 5984: 'CouchDB', 6379: 'Redis',
+    6666: 'IRC', 8000: 'HTTP Alt', 8008: 'HTTP Alt', 8080: 'HTTP Proxy',
+    8081: 'HTTP Proxy', 8443: 'HTTPS Alt', 8888: 'HTTP Alt',
+    9000: 'PHP-FPM', 9042: 'Cassandra', 9090: 'CockroachDB',
+    9100: 'JetDirect', 9200: 'Elasticsearch', 9300: 'Elasticsearch',
+    11211: 'Memcached', 27017: 'MongoDB', 27018: 'MongoDB',
+    28017: 'MongoDB HTTP', 50000: 'SAP', 50070: 'HDFS'
+}
 
 # Cargar configuración desde un archivo YAML
 def load_config():
@@ -41,6 +68,111 @@ def home():
     print("[INFO] Acceso a la página principal.")
     return render_template('index.html')
 
+def get_service_name(port):
+    return PORT_SERVICES.get(port, 'Desconocido')
+
+def check_port(target, port):
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(1.5)
+        result = sock.connect_ex((target, port))
+        
+        if result == 0:
+            service_info = get_service_info(sock, port)
+            sock.close()
+            
+            return {
+                'port': port,
+                'name': get_service_name(port),
+                'product': service_info.get('product', 'Desconocido'),
+                'version': service_info.get('version', 'Desconocido'),
+                'extrainfo': service_info.get('extrainfo', 'Detectado con escaneo básico')
+            }
+        sock.close()
+    except Exception:
+        return None
+    return None
+
+def get_service_info(sock, port):
+    """Intenta obtener información del servicio"""
+    try:
+        sock.settimeout(2.0)
+        
+        if port in [21, 22, 25, 80, 110, 143, 443, 587, 993, 995, 3306, 3389, 5432]:
+            banner = sock.recv(1024).decode('utf-8', errors='ignore').strip()
+            
+            info = {'extrainfo': f"Banner: {banner[:100]}"}
+            
+            if port == 22 and 'SSH' in banner:
+                info['product'] = 'OpenSSH'
+                if 'OpenSSH' in banner:
+                    version = banner.split('OpenSSH_')[1].split()[0]
+                    info['version'] = version.split('-')[0]
+            
+            elif port == 80 or port == 443:
+                if 'Apache' in banner or 'Server:' in banner:
+                    info['product'] = 'Apache'
+                    if 'Server:' in banner:
+                        version = banner.split('Server:')[1].split()[0]
+                        info['version'] = version
+                
+                elif 'nginx' in banner.lower():
+                    info['product'] = 'nginx'
+                    if 'nginx/' in banner.lower():
+                        version = banner.lower().split('nginx/')[1].split()[0]
+                        info['version'] = version
+            
+            elif port == 3306:
+                if 'MySQL' in banner:
+                    info['product'] = 'MySQL'
+                    version_part = banner.split('5.')
+                    if len(version_part) > 1:
+                        info['version'] = '5.' + version_part[1][:3]
+            
+            return info
+            
+    except Exception:
+        pass
+    
+    return {'product': 'Desconocido', 'version': 'Desconocido', 'extrainfo': 'No se pudo obtener banner'}
+
+def simple_port_scan(target, scan_type="default"):
+    # Definir puertos según el tipo de escaneo
+    if scan_type == "fast":
+        ports_to_scan = [21, 22, 23, 25, 53, 80, 110, 143, 443, 445, 
+                         993, 995, 1433, 1521, 3306, 3389, 5432, 5900, 8080]
+    elif scan_type == "tcp_syn":
+        ports_to_scan = list(PORT_SERVICES.keys())
+    elif scan_type == "service_detection":
+        ports_to_scan = [21, 22, 25, 53, 80, 110, 143, 389, 443, 445,
+                         587, 993, 995, 1433, 1521, 2049, 3306, 3389,
+                         5432, 5900, 5984, 6379, 8000, 8080, 8443, 9200,
+                         27017, 50000]
+    else:  # "default" - Análisis exhaustivo
+        ports_to_scan = list(PORT_SERVICES.keys()) + [
+            8081, 8888, 9000, 9042, 9090, 11211, 27018, 28017, 50070
+        ]
+
+    open_ports = []
+    
+    with concurrent.futures.ThreadPoolExecutor(max_workers=50) as executor:
+        future_to_port = {
+            executor.submit(check_port, target, port): port 
+            for port in ports_to_scan
+        }
+        
+        for future in concurrent.futures.as_completed(future_to_port):
+            port = future_to_port[future]
+            try:
+                result = future.result()
+                if result:
+                    open_ports.append(result)
+            except Exception:
+                continue
+    
+    open_ports.sort(key=lambda x: x['port'])
+    return open_ports
+
 @app.route('/scan', methods=['POST'])
 def scan():
     target = request.form.get('target')
@@ -53,62 +185,29 @@ def scan():
     print(f"[INFO] Iniciando escaneo para el objetivo: {target} con tipo: {scan_type}")
 
     try:
-        # --- Escaneos tradicionales con Nmap ---
-        if scan_type in ["default", "fast", "tcp_syn", "service_detection", "os_detection", "udp"]:
-            nm = nmap.PortScanner()
-
-            scan_arguments = {
-                "default": "-sS -sV -O -A",
-                "fast": "-F",
-                "tcp_syn": "-sS",
-                "service_detection": "-sV",
-                "os_detection": "-O",
-                "udp": "-sU"
-            }.get(scan_type, "-sS -sV -O -A")  # Valor por defecto
-
-            results = nm.scan(hosts=target, arguments=scan_arguments)
-            print(f"[INFO] Resultados del escaneo: {results}")
-
-            open_ports = []
-
-            scanned_hosts = results.get('scan', {})
-            if scanned_hosts:
-                scanned_host = next(iter(scanned_hosts.keys()))
-                tcp_results = scanned_hosts.get(scanned_host, {}).get('tcp', {})
-
-                for port, info in tcp_results.items():
-                    if info.get('state') == 'open':
-                        open_ports.append({
-                            'port': port,
-                            'name': info.get('name', 'N/A'),
-                            'product': info.get('product', 'N/A'),
-                            'version': info.get('version', 'N/A'),
-                            'extrainfo': info.get('extrainfo', 'N/A')
-                        })
-
-            print(f"[INFO] Puertos abiertos detectados: {open_ports}")
+        # Escaneos tradicionales reemplazados
+        if scan_type in ["default", "fast", "tcp_syn", "service_detection"]:
+            open_ports = simple_port_scan(target, scan_type)
             return render_template('results.html', target=target, open_ports=open_ports, scan_type=scan_type)
-
-        # --- Escaneos de seguridad web (SSL, Headers, Subdomains, Technologies) ---
+        
+        # Escaneos web
+        elif scan_type == "ssl":
+            result = scan_ssl(target)
+        elif scan_type == "headers":
+            result = scan_headers(f"http://{target}")
+        elif scan_type == "subdomains":
+            result = find_subdomains(target)
+        elif scan_type == "technologies":
+            result = detect_technologies(f"http://{target}")
         else:
-            if scan_type == "ssl":
-                result = scan_ssl(target)
-            elif scan_type == "headers":
-                result = scan_headers(f"http://{target}")
-            elif scan_type == "subdomains":
-                result = find_subdomains(target)
-            elif scan_type == "technologies":
-                result = detect_technologies(f"http://{target}")
-            else:
-                result = {"error": "Tipo de análisis no reconocido."}
+            result = {"error": "Tipo de análisis no reconocido."}
 
-            print(f"[INFO] Resultados de {scan_type}: {result}")
-            return render_template('results.html', target=target, scan_type=scan_type, result=result)
+        print(f"[INFO] Resultados de {scan_type}: {result}")
+        return render_template('results.html', target=target, scan_type=scan_type, result=result)
 
     except Exception as e:
         print(f"[ERROR] Error durante el análisis: {e}")
         return render_template('index.html', error=f"Error al realizar el escaneo: {str(e)}")
-
 
 @app.route('/action', methods=['POST'])
 def action():
